@@ -1,0 +1,27 @@
+# הסתרת משתני סביבה רגישים
+.env
+config.py
+secrets.json
+
+# הסתרת סשנים של הבוט הראשי (רק הסשן של היוזר מורשה לעלות)
+TjBot_Session.session*
+*.session-journal
+*.session-wal
+*.session-shm
+
+# החרגה מפורשת לקובץ היוזר (כדי שיעלה לשרת בענן)
+!User_Session.session
+
+# קובצי מערכת וזבל
+.DS_Store
+Thumbs.db
+node_modules/
+__pycache__/
+*.pyc
+venv/
+env/
+
+# לוגים וקבצים זמניים
+*.log
+nohup.out
+restart.txt
