@@ -2,9 +2,11 @@ import asyncio
 from pyrogram import Client
 from config import API_ID, API_HASH, SESSION_STRING
 
+# הגדרת משתנה ההגדרות לקבוצות (נדרש עבור search.py)
+GROUP_SETTINGS = {}
+
 user_app = None
 
-# יוצרים את הלקוח רק אם קיימת מחרוזת סשן תקפה
 if SESSION_STRING:
     user_app = Client(
         "userbot_session",
@@ -16,7 +18,6 @@ if SESSION_STRING:
 
 async def safe_start_userbot():
     if not user_app:
-        # אם אין מחרוזת SESSION_STRING ב-Variables, הדלג בצורה שקטה בלי להתרסק
         return False
     if not user_app.is_connected:
         try:
