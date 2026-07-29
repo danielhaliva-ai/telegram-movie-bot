@@ -1,4 +1,3 @@
-
 import asyncio
 from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto
@@ -117,21 +116,11 @@ async def send_home_message(client, message, user=None, is_edit=False):
     bot_mention = f"[{bot_name}](https://t.me/{bot_username})"
     
     buttons = [
-        [
-            InlineKeyboardButton("🔍 חיפוש סרט", callback_data="btn_search"),
-            InlineKeyboardButton("🔥 פופולריים", callback_data="btn_trending")
-        ],
-        [
-            InlineKeyboardButton("🎲 סרט אקראי", callback_data="btn_random"),
-            InlineKeyboardButton('〄 עזרה 〄', callback_data='help', style=enums.ButtonStyle.PRIMARY)
-        ],
-        [
-            InlineKeyboardButton('✇ קבוצת בקשות ✇', url=REQUEST_GROUP, style=enums.ButtonStyle.SUCCESS), 
-            InlineKeyboardButton('✇ ערוץ עדכונים ✇', url=f'https://t.me/{UPDATE_CHANNEL}', style=enums.ButtonStyle.SUCCESS)
-        ],
-        [
-            InlineKeyboardButton('⇋ להוספה לקבוצה ⇋', url=f"http://t.me/{client.me.username}?startgroup&admin=delete_messages", style=enums.ButtonStyle.SUCCESS)
-        ]
+        [InlineKeyboardButton("🔍 חיפוש סרט", callback_data="btn_search"), InlineKeyboardButton("🔥 פופולריים", callback_data="btn_trending")],
+        [InlineKeyboardButton("🎲 סרט אקראי", callback_data="btn_random"), InlineKeyboardButton('〄 עזרה 〄', callback_data='help', style=enums.ButtonStyle.PRIMARY)],
+        [InlineKeyboardButton('✇ קבוצת בקשות ✇', url=REQUEST_GROUP, style=enums.ButtonStyle.SUCCESS), 
+         InlineKeyboardButton('✇ ערוץ עדכונים ✇', url=f'https://t.me/{UPDATE_CHANNEL}', style=enums.ButtonStyle.SUCCESS)],
+        [InlineKeyboardButton('⇋ להוספה לקבוצה ⇋', url=f"http://t.me/{client.me.username}?startgroup&admin=delete_messages", style=enums.ButtonStyle.SUCCESS)]
     ]
     
     txt = (f"**היי {user_mention} <tg-emoji emoji-id='5195448447062251797'>👋</tg-emoji>**\n"
@@ -149,7 +138,8 @@ async def send_home_message(client, message, user=None, is_edit=False):
 @Client.on_callback_query()
 async def callback_handler(client, query: CallbackQuery):
     data = query.data
-    # === כפתורים חדשים ===
+    user_id = query.from_user.id
+
     if data == "btn_search":
         await query.answer()
         return await query.message.reply_text("פשוט רשום לי את שם הסרט או הסדרה שאתה מחפש! 🔎", quote=True)
@@ -161,7 +151,6 @@ async def callback_handler(client, query: CallbackQuery):
     elif data == "btn_random":
         await query.answer()
         return await query.message.reply_text("🎲 **המלצה אקראית עבורך:** Inception (2010)", quote=True)
-    user_id = query.from_user.id
 
     if data.startswith("checksub_"):
         file_db_id = data.split("_")[1]
@@ -287,8 +276,7 @@ async def callback_handler(client, query: CallbackQuery):
             "אנחנו כאן כדי לעזור! הצוות המעולה שלנו תמיד זמין לענות על בקשות ⚡️\n"
             "זהו פשוט עוד דרך חכמה למענה מהיר יותר"
             "</blockquote>"
-)
-
+        )
         btn = [[InlineKeyboardButton('למעבר לקבוצה 💬', url=REQUEST_GROUP, style=enums.ButtonStyle.SUCCESS)], [InlineKeyboardButton('חזרה ⋟', callback_data='help', style=enums.ButtonStyle.PRIMARY)]]
         await query.message.edit_media(InputMediaPhoto(PHOTO_URL, caption=txt), reply_markup=InlineKeyboardMarkup(btn))
 
@@ -385,20 +373,17 @@ async def callback_handler(client, query: CallbackQuery):
         )
         await query.message.edit_media(InputMediaPhoto(PHOTO_URL, caption=txt), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('חזרה ⋟', callback_data='help', style=enums.ButtonStyle.PRIMARY)]]))
 
-
     elif data == "help_telegraph":
         txt = (
             "<tg-emoji emoji-id='5445355530111437729'>📤</tg-emoji> <b><u>העלאת תמונות ל: i.ibb.co</u></b> 🖼️\n\n\n<b>◉ </b><b><u>פקודה:</u></b>\n<blockquote>/telegraph</blockquote>\n\n<b>◉ </b><b><u>איך משתמשים?</u></b>\n<blockquote>פשוט מגיבים על תמונה עם הפקודה.</blockquote>"
         )
         await query.message.edit_media(InputMediaPhoto(PHOTO_URL, caption=txt), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('חזרה ⋟', callback_data='help', style=enums.ButtonStyle.PRIMARY)]]))
 
-
     elif data == "help_exthumb":
         txt = (
             "<tg-emoji emoji-id='5823268688874179761'>🔧</tg-emoji> <b><i>כלים לוידאו:</i>\n\n\n</b><b><tg-emoji emoji-id='5332679880599418983'>ℹ️</tg-emoji></b><b> </b><b><u>מידע על וידאו:</u></b>\n<b>◉ פקודה:</b>\n<blockquote>/mediainfo</blockquote>\n\n<b>🖼️ </b><b><u>חילוץ תמונה ממוזערת:</u></b>\n<b>◉ פקודה:</b>\n<blockquote>/extract_thumbnail</blockquote>\n\n\n<b><u>איך משתמשים?</u></b>\n<blockquote>מגיבים על וידאו/קובץ עם הפקודה שרוצים.</blockquote>"
         )
         await query.message.edit_media(InputMediaPhoto(PHOTO_URL, caption=txt), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('חזרה ⋟', callback_data='help', style=enums.ButtonStyle.PRIMARY)]]))
-
 
     elif data == "closea":
         try:
