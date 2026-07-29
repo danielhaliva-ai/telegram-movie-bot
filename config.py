@@ -9,6 +9,7 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "8900460988:AAFV3cceuxkGixSypGCkbjjkwxcP
 
 MONGO_URI = os.environ.get("MONGO_URI", "mongodb+srv://ww0527119835_db_user:vmi25IRkHGdoMudg@cluster0.lbxxpwt.mongodb.net/?appName=Cluster0")
 DB_NAME = "TjBotDB"
+SESSION_STRING = os.environ.get("SESSION_STRING", "")
 
 # מנהלים
 ADMINS = [8526860681]
