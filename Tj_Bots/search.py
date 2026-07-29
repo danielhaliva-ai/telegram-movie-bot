@@ -1,158 +1,73 @@
 import asyncio
-from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from .utils import clean_filename
-from userbot_service import search_in_telegram_groups, get_all_user_chats, GROUP_SETTINGS
-from config import ADMINS
+from pyrogram import Client, filters, enums
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message
+from pyrogram.errors import FloodWait
+from database import db
+from userbot_service import search_in_telegram_groups
 
-# הודעת פתיחה
-@Client.on_message(filters.command("start"))
-async def start_handler(client, message):
-    text = (
-        "👋 **ברוך הבא לבוט חיפוש הסרטים והסדרות!**\n\n"
-        "פשוט כתוֹב לי בצ'אט את שם הסרט או הסדרה שאתה מחפש:"
-    )
-    
-    keyboard = []
-    # אם המשתמש הוא מנהל, מוסיפים לו כפתור הגדרות
-    if message.from_user.id in ADMINS:
-        keyboard.append([InlineKeyboardButton("⚙️ הגדרות קבוצות (למנהל)", callback_data="admin_groups_menu")])
-        
-    markup = InlineKeyboardMarkup(keyboard) if keyboard else None
-    await message.reply_text(text, reply_markup=markup, quote=True)
+@Client.on_message(filters.text & filters.private & ~filters.command(["start", "help", "settings"]))
+async def search_handler(client: Client, message: Message):
+    query = message.text.strip()
+    if not query or len(query) < 2:
+        return await message.reply("❌ נא להזין שם סרט/סדרה של לפחות 2 אותיות.", quote=True)
 
-# פקודת הגדרות מנהל /settings
-@Client.on_message(filters.command("settings") & filters.user(ADMINS))
-async def settings_command_handler(client, message):
-    await show_groups_settings_menu(message)
-
-# הצגת תפריט ה-ON/OFF של הקבוצות
-from pyrogram.errors import MessageNotModified
-
-# הצגת תפריט ה-ON/OFF של הקבוצות
-async def show_groups_settings_menu(message_or_query, is_edit=False):
-    chats = await get_all_user_chats()
-    
-    keyboard = []
-    for chat in chats:
-        chat_id = chat['id']
-        title = chat['title']
-        is_active = GROUP_SETTINGS.get(chat_id, True)
-        
-        status_icon = "✅" if is_active else "❌"
-        btn_text = f"{status_icon} {title}"
-        
-        keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"toggle_grp_{chat_id}")])
-
-    keyboard.append([InlineKeyboardButton("🔄 רענן רשימה", callback_data="admin_groups_menu")])
-    markup = InlineKeyboardMarkup(keyboard)
-    
-    text = "⚙️ **הגדרות קבוצות חיפוש:**\nלחץ על קבוצה כדי להפעיל (✅) או לנטרל (❌) אותה מחיפוש:"
-    
+    status_msg = None
     try:
-        if is_edit:
-            await message_or_query.edit_text(text, reply_markup=markup)
-        else:
-            await message_or_query.reply_text(text, reply_markup=markup)
-    except MessageNotModified:
-        # התעלמות משגיאה במידה וההודעה לא השתנתה
-        pass
-# טיפול בלחיצות על כפתורי ההגדרות וה-ON/OFF
-@Client.on_callback_query()
-async def callback_dispatcher(client, query: CallbackQuery):
-    data = query.data
-    
-    # פתיחת תפריט הגדרות
-    if data == "admin_groups_menu":
-        if query.from_user.id not in ADMINS:
-            await query.answer("⛔ אינך מנהל!", show_alert=True)
-            return
-        await query.answer()
-        await show_groups_settings_menu(query.message, is_edit=True)
-        
-    # שינוי מצב קבוצה (ON / OFF)
-    elif data.startswith("toggle_grp_"):
-        if query.from_user.id not in ADMINS:
-            await query.answer("⛔ אינך מנהל!", show_alert=True)
-            return
-            
-        chat_id = int(data.replace("toggle_grp_", ""))
-        current_status = GROUP_SETTINGS.get(chat_id, True)
-        
-        # הופך את המצב (מ-True ל-False או להפך)
-        GROUP_SETTINGS[chat_id] = not current_status
-        
-        new_state_str = "מופעלת" if GROUP_SETTINGS[chat_id] else "מנוטרלת"
-        await query.answer(f"הקבוצה כעת {new_state_str}!")
-        
-        # מעדכן את התפריט בלייב
-        await show_groups_settings_menu(query.message, is_edit=True)
-
-# חיפוש חופשי
-@Client.on_message(filters.text & ~filters.command(["start", "settings", "index", "newindex", "broadcast", "broadcast_groups", "stats", "restart", "clean", "channels", "watch", "font", "share", "tts", "paste"]))
-async def search_handler(client, message):
-    query = message.text
-    if query.startswith("/"): return
-    if len(query) < 2: return
-
-    status_msg = await message.reply("🔍 **מחפש עבורך בקבוצות, רגע אחד...**", quote=True)
-
-    live_results = await search_in_telegram_groups(query)
-    
-    results = []
-    if live_results:
-        for item in live_results:
-            results.append({
-                'file_name': f"[{item['chat_title']}] {item['file_name']}",
-                'msg_link': item['msg_link']
-            })
-
-    try: 
-        await status_msg.delete()
-    except Exception: 
-        pass
-
-    if not results:
+        status_msg = await message.reply("🔍 **מחפש עבורך בקבוצות, רגע אחד...**", quote=True)
+    except FloodWait as e:
+        await asyncio.sleep(e.value)
         try:
-            msg = await message.reply(f"**לא נמצאו תוצאות לחיפוש: `{query}`** 🙅‍♂️", quote=True)
-            await asyncio.sleep(3)
-            await msg.delete()
-        except Exception: 
+            status_msg = await message.reply("🔍 **מחפש עבורך בקבוצות, רגע אחד...**", quote=True)
+        except Exception:
             pass
+    except Exception:
+        pass
+
+    # 1. חיפוש במסד הנתונים הפנימי (MongoDB)
+    db_results = await db.search_files(query)
+    
+    # 2. חיפוש בלייב בקבוצות דרך ה-Userbot
+    live_results = await search_in_telegram_groups(query)
+
+    if not db_results and not live_results:
+        txt = f"❌ **לא נמצאו תוצאות עבור:** `{query}`"
+        if status_msg:
+            try:
+                await status_msg.edit_text(txt)
+            except Exception:
+                await message.reply(txt, quote=True)
+        else:
+            await message.reply(txt, quote=True)
         return
 
-    try:
-        await send_results_page(client, message, results, 1, query)
-    except Exception as e:
-        print(f"Error sending results: {e}")
+    # הרכבת תגובת התוצאות
+    buttons = []
+    
+    # הוספת תוצאות מ-MongoDB
+    if db_results:
+        for file in db_results[:10]:
+            file_name = file.get("file_name", "קובץ ללא שם")
+            file_id = str(file.get("_id"))
+            buttons.append([InlineKeyboardButton(f"🎬 {file_name}", callback_data=f"file_{file_id}")])
 
-async def send_results_page(client, message, results, page, query, is_edit=False):
-    per_page = 10
-    total_results = len(results)
-    total_pages = (total_results + per_page - 1) // per_page
-    
-    start_idx = (page - 1) * per_page
-    current_batch = results[start_idx : start_idx + per_page]
-    
-    text = f"<b>🔍 <i><u>תוצאות חיפוש</u></i></b>\n\n"
-    text += f"<blockquote><b>📌 חיפשת:</b> <code>{query}</code></blockquote>\n"
-    text += f"<blockquote><b>🖥 נמצאו:</b> <code>{total_results} תוצאות</code></blockquote>\n\n"
-    
-    keyboard = []
-    for res in current_batch:
-        clean = clean_filename(res['file_name'])
-        keyboard.append([InlineKeyboardButton(clean, url=res['msg_link'])])
+    response_text = f"🔎 **תוצאות חיפוש עבור:** `{query}`\n"
+    response_text += f"📌 **נמצאו:** {len(db_results) + len(live_results)} תוצאות\n\n"
 
-    nav = []
-    if page > 1: nav.append(InlineKeyboardButton('⬅️ דף קודם', callback_data=f"search#{query}#{page-1}"))
-    if page < total_pages: nav.append(InlineKeyboardButton('דף הבא ➡️', callback_data=f"search#{query}#{page+1}"))
-    if nav: keyboard.append(nav)
-    
-    keyboard.append([InlineKeyboardButton(f"📃 עמוד {page} מתוך {total_pages}", callback_data="noop")])
+    # הוספת תוצאות טקסטואליות מתוך הקבוצות
+    if live_results:
+        response_text += "💬 **מתוך קבוצות טלגרם:**\n"
+        for msg in live_results[:5]:
+            chat_title = msg.chat.title if msg.chat else "קבוצה"
+            link = msg.link if msg.link else "#"
+            snippet = msg.text[:60] if msg.text else "מדיה"
+            response_text += f"• [{chat_title}]({link}): {snippet}...\n"
 
-    markup = InlineKeyboardMarkup(keyboard)
-    
-    if is_edit:
-        await message.edit_text(text, reply_markup=markup, disable_web_page_preview=True)
+    markup = InlineKeyboardMarkup(buttons) if buttons else None
+
+    if status_msg:
+        try:
+            await status_msg.edit_text(response_text, reply_markup=markup, disable_web_page_preview=True)
+        except Exception:
+            await message.reply(response_text, reply_markup=markup, disable_web_page_preview=True, quote=True)
     else:
-        await message.reply_text(text, reply_markup=markup, disable_web_page_preview=True, quote=True)
+        await message.reply(response_text, reply_markup=markup, disable_web_page_preview=True, quote=True)
