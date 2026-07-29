@@ -27,7 +27,7 @@ async def search_in_telegram_groups(query: str):
     
     if not user_app.is_connected:
         if not user_app.is_connected:
-        await user_app.start()
+            await user_app.start()
 
     try:
         async for dialog in user_app.get_dialogs():
