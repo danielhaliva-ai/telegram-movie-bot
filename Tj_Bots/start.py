@@ -117,12 +117,21 @@ async def send_home_message(client, message, user=None, is_edit=False):
     bot_mention = f"[{bot_name}](https://t.me/{bot_username})"
     
     buttons = [
-        [InlineKeyboardButton("🔍 חיפוש באינליין 🔎", switch_inline_query_current_chat="", style=enums.ButtonStyle.PRIMARY)],
-        [InlineKeyboardButton('✇ קבוצת בקשות ✇', url=REQUEST_GROUP, style=enums.ButtonStyle.SUCCESS), 
-         InlineKeyboardButton('✇ ערוץ עדכונים ✇', url=f'https://t.me/{UPDATE_CHANNEL}', style=enums.ButtonStyle.SUCCESS)],
-        [InlineKeyboardButton('〄 עזרה 〄', callback_data='help', style=enums.ButtonStyle.PRIMARY), 
-         InlineKeyboardButton('⍟ אודות ⍟', callback_data='about', style=enums.ButtonStyle.PRIMARY)],
-        [InlineKeyboardButton('⇋ להוספה לקבוצה ⇋', url=f"http://t.me/{client.me.username}?startgroup&admin=delete_messages", style=enums.ButtonStyle.SUCCESS)]
+        [
+            InlineKeyboardButton("🔍 חיפוש סרט", callback_data="btn_search"),
+            InlineKeyboardButton("🔥 פופולריים", callback_data="btn_trending")
+        ],
+        [
+            InlineKeyboardButton("🎲 סרט אקראי", callback_data="btn_random"),
+            InlineKeyboardButton('〄 עזרה 〄', callback_data='help', style=enums.ButtonStyle.PRIMARY)
+        ],
+        [
+            InlineKeyboardButton('✇ קבוצת בקשות ✇', url=REQUEST_GROUP, style=enums.ButtonStyle.SUCCESS), 
+            InlineKeyboardButton('✇ ערוץ עדכונים ✇', url=f'https://t.me/{UPDATE_CHANNEL}', style=enums.ButtonStyle.SUCCESS)
+        ],
+        [
+            InlineKeyboardButton('⇋ להוספה לקבוצה ⇋', url=f"http://t.me/{client.me.username}?startgroup&admin=delete_messages", style=enums.ButtonStyle.SUCCESS)
+        ]
     ]
     
     txt = (f"**היי {user_mention} <tg-emoji emoji-id='5195448447062251797'>👋</tg-emoji>**\n"
@@ -140,6 +149,18 @@ async def send_home_message(client, message, user=None, is_edit=False):
 @Client.on_callback_query()
 async def callback_handler(client, query: CallbackQuery):
     data = query.data
+    # === כפתורים חדשים ===
+    if data == "btn_search":
+        await query.answer()
+        return await query.message.reply_text("פשוט רשום לי את שם הסרט או הסדרה שאתה מחפש! 🔎", quote=True)
+
+    elif data == "btn_trending":
+        await query.answer("טוען תכנים פופולריים...")
+        return await query.message.reply_text("🔥 **הסרטים החמים כרגע:**\n1. סרט א'\n2. סרט ב'\n3. סרט ג'", quote=True)
+
+    elif data == "btn_random":
+        await query.answer()
+        return await query.message.reply_text("🎲 **המלצה אקראית עבורך:** Inception (2010)", quote=True)
     user_id = query.from_user.id
 
     if data.startswith("checksub_"):
