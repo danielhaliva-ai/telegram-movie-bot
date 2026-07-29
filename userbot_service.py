@@ -2,19 +2,22 @@ import asyncio
 from pyrogram import Client
 from config import API_ID, API_HASH, SESSION_STRING
 
-# הגדרת הלקוח עם זיכרון זמני כדי לא לדרוס DB ישן
-user_app = Client(
-    "userbot_session",
-    api_id=API_ID,
-    api_hash=API_HASH,
-    session_string=SESSION_STRING if SESSION_STRING else None,
-    in_memory=True
-)
+user_app = None
 
-GROUP_SETTINGS = {}
+# יוצרים את הלקוח רק אם קיימת מחרוזת סשן תקפה
+if SESSION_STRING:
+    user_app = Client(
+        "userbot_session",
+        api_id=API_ID,
+        api_hash=API_HASH,
+        session_string=SESSION_STRING,
+        in_memory=True
+    )
 
 async def safe_start_userbot():
-    """התחברות בטוחה ללא לולאות אינסופיות"""
+    if not user_app:
+        # אם אין מחרוזת SESSION_STRING ב-Variables, הדלג בצורה שקטה בלי להתרסק
+        return False
     if not user_app.is_connected:
         try:
             await user_app.start()
