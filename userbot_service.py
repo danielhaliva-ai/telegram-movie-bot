@@ -2,7 +2,8 @@ import asyncio
 from pyrogram import Client
 from config import API_ID, API_HASH, SESSION_STRING
 
-# הגדרת משתנה ההגדרות לקבוצות (נדרש עבור search.py)
+# מילון לשמירת מצב הקבוצות (קבוצה מופעלת/מופסקת)
+# ברירת מחדל: True (כל הקבוצות פעילות)
 GROUP_SETTINGS = {}
 
 user_app = None
@@ -29,6 +30,7 @@ async def safe_start_userbot():
     return True
 
 async def get_all_user_chats():
+    """שליפת כל הקבוצות שהחשבון מחובר אליהן"""
     chats = []
     if not await safe_start_userbot():
         return chats
@@ -37,11 +39,15 @@ async def get_all_user_chats():
         async for dialog in user_app.get_dialogs():
             if dialog.chat.type in ["group", "supergroup"]:
                 chats.append(dialog.chat)
+                # אם קבוצה חדשה, נגדיר אותה כפעילה כברירת מחדל
+                if dialog.chat.id not in GROUP_SETTINGS:
+                    GROUP_SETTINGS[dialog.chat.id] = True
     except Exception as e:
         print(f"Error getting chats: {e}")
     return chats
 
 async def search_in_telegram_groups(query):
+    """חיפוש בטוח בקבוצות הפעילות בלבד עם הגנת Anti-Flood"""
     results = []
     if not await safe_start_userbot():
         return results
@@ -49,10 +55,20 @@ async def search_in_telegram_groups(query):
     try:
         async for dialog in user_app.get_dialogs():
             if dialog.chat.type in ["group", "supergroup"]:
+                chat_id = dialog.chat.id
+                
+                # בדיקה אם המנהל ביטל את הקבוצה הזו
+                if not GROUP_SETTINGS.get(chat_id, True):
+                    continue
+
                 try:
-                    async for message in user_app.search_messages(dialog.chat.id, query=query, limit=5):
-                        if message.media:
+                    # חיפוש מוגבל ל-3 קבצים לקבוצה למניעת הצפה
+                    async for message in user_app.search_messages(chat_id, query=query, limit=3):
+                        if message.media or message.text:
                             results.append(message)
+                    
+                    # השהיה קטנה לבטיחות מלאה מול שרתי טלגרם
+                    await asyncio.sleep(0.2)
                 except Exception:
                     continue
     except Exception as e:
