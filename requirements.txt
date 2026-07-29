@@ -13,7 +13,7 @@ langdetect
 motor
 pyaes
 pymongo
-pyrotgfork
+Pyrofork
 PySocks
 python-dotenv
 requests
