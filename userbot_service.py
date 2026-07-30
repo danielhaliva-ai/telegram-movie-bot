@@ -1,21 +1,23 @@
 import asyncio
 from pyrogram import Client
-from pyrogram.enums import ChatType
 from config import API_ID, API_HASH, SESSION_STRING
 from database import save_file
 
 user_app = None
 
-if SESSION_STRING:
+# ניקוי רווחים וירידות שורה מיותרות מקצוות המחרוזת
+clean_session = SESSION_STRING.strip() if SESSION_STRING else None
+
+if clean_session:
     user_app = Client(
         "userbot_session",
         api_id=int(API_ID),
         api_hash=API_HASH,
-        session_string=SESSION_STRING,
+        session_string=clean_session,
         in_memory=True
     )
 else:
-    print("❌ Critical: SESSION_STRING is missing in Environment Variables!")
+    print("❌ Critical: SESSION_STRING is missing!", flush=True)
 
 async def start_userbot_service():
     if not user_app:
