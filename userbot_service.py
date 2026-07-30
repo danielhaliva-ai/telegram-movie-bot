@@ -1,11 +1,10 @@
 import asyncio
 from pyrogram import Client
 from config import API_ID, API_HASH, SESSION_STRING
-from database import save_file
+from database import save_file, register_or_update_group
 
 user_app = None
 
-# ניקוי רווחים וירידות שורה מיותרות מקצוות המחרוזת
 clean_session = SESSION_STRING.strip() if SESSION_STRING else None
 
 if clean_session:
@@ -16,48 +15,41 @@ if clean_session:
         session_string=clean_session,
         in_memory=True
     )
-else:
-    print("❌ Critical: SESSION_STRING is missing!", flush=True)
 
 async def start_userbot_service():
     if not user_app:
-        print("❌ Userbot client is not initialized.")
+        print("❌ Userbot client missing", flush=True)
         return False
     if not user_app.is_connected:
         try:
-            print("🔄 Connecting Userbot to Telegram...")
             await user_app.start()
-            print("✅ Userbot connected successfully!")
+            print("✅ Userbot connected!", flush=True)
             return True
         except Exception as e:
-            print(f"❌ Userbot failed to connect: {e}")
+            print(f"❌ Userbot connection error: {e}", flush=True)
             return False
     return True
 
 async def index_groups_background():
-    """סריקה מלאה של קבוצות וערוצים ברקע עם לוגים מפורטים"""
-    print("🚀 Initiating background indexing task...")
-    
-    connected = await start_userbot_service()
-    if not connected:
-        print("❌ Indexing aborted: Userbot is not connected.")
+    """סריקת קבוצות ברקע ורישומן במסד הנתונים"""
+    print("🚀 Initiating background indexing...", flush=True)
+    if not await start_userbot_service():
         return
 
-    print("🔄 Fetching user dialogs/groups...")
     total_saved = 0
-
     try:
         async for dialog in user_app.get_dialogs():
             chat = dialog.chat
             chat_type_str = str(chat.type)
             
-            # בדיקת סוג הצ'אט (קבוצות, סופר-קבוצות וערוצים)
             if any(t in chat_type_str for t in ["GROUP", "SUPERGROUP", "CHANNEL", "group", "supergroup", "channel"]):
-                print(f"📂 Processing Chat: '{chat.title}' (ID: {chat.id})")
+                print(f"📂 Processing Chat: '{chat.title}' ({chat.id})", flush=True)
+                # רישום הקבוצה במסד הנתונים
+                await register_or_update_group(chat.id, chat.title)
+                
                 try:
                     async for msg in user_app.get_chat_history(chat.id, limit=50):
                         text_content = msg.text or msg.caption
-                        
                         if not text_content:
                             if msg.document:
                                 text_content = msg.document.file_name
@@ -69,12 +61,11 @@ async def index_groups_background():
                             await save_file(text_content, chat.id, msg.id, clean_link)
                             total_saved += 1
                             
-                    print(f"✅ Finished chat '{chat.title}'. Total saved so far: {total_saved}")
                     await asyncio.sleep(1)
                 except Exception as group_err:
-                    print(f"⚠️ Error reading history for '{chat.title}': {group_err}")
+                    print(f"⚠️ Error in '{chat.title}': {group_err}", flush=True)
                     continue
 
-        print(f"🎉 All groups indexed successfully! Total entries saved in MongoDB: {total_saved}")
+        print(f"🎉 Indexing completed! Total saved: {total_saved}", flush=True)
     except Exception as e:
-        print(f"❌ Fatal error during indexing loop: {e}")
+        print(f"❌ Indexing loop error: {e}", flush=True)

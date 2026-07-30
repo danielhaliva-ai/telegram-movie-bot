@@ -3,6 +3,8 @@ from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto
 from config import UPDATE_CHANNEL, REQUEST_GROUP, PHOTO_URL, ADMINS
 from Tj_Bots.search import APPROVED_USERS, REQUIRE_APPROVAL
+from database import get_start_photo, set_start_photo, get_all_groups, toggle_group_status
+from userbot_service import index_groups_background
 
 @Client.on_message(filters.command("start"))
 async def start_command(client, message):
@@ -46,9 +48,12 @@ async def send_home_message(client, message, user=None, is_edit=False):
     bot_username = client.me.username
     bot_mention = f"[{bot_name}](https://t.me/{bot_username})"
     
+    # שליפת התמונה המעודכנת מ-MongoDB, ואם אין - שימוש בתמונת ברירת המחדל
+    current_photo = await get_start_photo() or PHOTO_URL
+    
+    # כפתורים מנוקים: רק חיפוש, קבוצות, וערוצים
     buttons = [
-        [InlineKeyboardButton("🔍 חיפוש סרט", callback_data="btn_search"), InlineKeyboardButton("🔥 פופולריים", callback_data="btn_trending")],
-        [InlineKeyboardButton("🎲 סרט אקראי", callback_data="btn_random"), InlineKeyboardButton('〄 עזרה 〄', callback_data='help')],
+        [InlineKeyboardButton("🔍 חיפוש סרט", callback_data="btn_search")],
         [InlineKeyboardButton('✇ קבוצת בקשות ✇', url=REQUEST_GROUP), InlineKeyboardButton('✇ ערוץ עדכונים ✇', url=f'https://t.me/{UPDATE_CHANNEL}')],
         [InlineKeyboardButton('⇋ להוספה לקבוצה ⇋', url=f"http://t.me/{client.me.username}?startgroup&admin=delete_messages")]
     ]
@@ -65,9 +70,9 @@ async def send_home_message(client, message, user=None, is_edit=False):
            f"<blockquote>**👨🏼‍💻 מתכנת ראשי: @danielhaliva**</blockquote>")
     
     if is_edit:
-        await message.edit_media(InputMediaPhoto(PHOTO_URL, caption=txt), reply_markup=InlineKeyboardMarkup(buttons))
+        await message.edit_media(InputMediaPhoto(current_photo, caption=txt), reply_markup=InlineKeyboardMarkup(buttons))
     else:
-        await message.reply_photo(PHOTO_URL, caption=txt, reply_markup=InlineKeyboardMarkup(buttons), quote=True)
+        await message.reply_photo(current_photo, caption=txt, reply_markup=InlineKeyboardMarkup(buttons), quote=True)
 
 async def show_admin_panel(message, is_edit=False):
     import Tj_Bots.search as search_mod
@@ -82,6 +87,9 @@ async def show_admin_panel(message, is_edit=False):
     
     buttons = [
         [InlineKeyboardButton(toggle_btn_txt, callback_data="toggle_approval")],
+        [InlineKeyboardButton("🔄 סריקת קבוצות מחדש", callback_data="admin_rescan")],
+        [InlineKeyboardButton("📂 ניהול קבוצות פעילות", callback_data="admin_groups")],
+        [InlineKeyboardButton("🖼️ עדכון תמונת ברוכים הבאים", callback_data="admin_change_photo")],
         [InlineKeyboardButton("🧹 מחק את כל ההתכתבות", callback_data="clear_chat_action")],
         [InlineKeyboardButton("🏠 חזרה לבית", callback_data="home")]
     ]
@@ -89,6 +97,14 @@ async def show_admin_panel(message, is_edit=False):
         await message.edit_text(txt, reply_markup=InlineKeyboardMarkup(buttons))
     else:
         await message.reply_text(txt, reply_markup=InlineKeyboardMarkup(buttons), quote=True)
+
+# קבלת תמונה חדשה מהמנהל לעדכון תמונת ההתחלה
+@Client.on_message(filters.photo & filters.private)
+async def set_photo_handler(client, message):
+    if message.from_user.id in ADMINS:
+        photo_id = message.photo.file_id
+        await set_start_photo(photo_id)
+        await message.reply_text("✅ **תמונת הברכה עודכנה בהצלחה!**\nכל משתמש שירשום `/start` יראה כעת את התמונה החדשה.", quote=True)
 
 @Client.on_callback_query()
 async def callback_handler(client, query: CallbackQuery):
@@ -100,16 +116,46 @@ async def callback_handler(client, query: CallbackQuery):
         await query.answer()
         return await query.message.reply_text("פשוט רשום לי את שם הסרט או הסדרה שאתה מחפש! 🔎", quote=True)
 
-    elif data == "btn_trending":
-        await query.answer("טוען תכנים פופולריים...")
-        return await query.message.reply_text("🔥 **הסרטים החמים כרגע:**\n1. פאודה\n2. מהיר ועצבני\n3. הארי פוטר", quote=True)
-
-    elif data == "btn_random":
-        await query.answer()
-        return await query.message.reply_text("🎲 **המלצה אקראית עבורך:** Inception (2010)", quote=True)
-
     elif data == "admin_panel" and user_id in ADMINS:
         await show_admin_panel(query.message, is_edit=True)
+
+    elif data == "admin_rescan" and user_id in ADMINS:
+        await query.answer("🔄 מתחיל סריקה ברקע...")
+        await query.message.edit_text("🔄 **סריקת הקבוצות והערוצים החלה ברקע...**\nתוכל להמשיך להשתמש בבוט כרגיל.")
+        asyncio.create_task(index_groups_background())
+
+    elif data == "admin_groups" and user_id in ADMINS:
+        groups = await get_all_groups()
+        if not groups:
+            return await query.message.edit_text("❌ לא נמצאו קבוצות במסד הנתונים. הרץ סריקה ראשונית.")
+
+        keyboard = []
+        for g in groups:
+            status_icon = "✅" if g.get("enabled", True) else "❌"
+            btn_text = f"{status_icon} {g.get('title', 'קבוצה')}"
+            keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"toggle_grp_{g['chat_id']}")])
+
+        keyboard.append([InlineKeyboardButton("🔙 חזרה לפאנל מנהל", callback_data="admin_panel")])
+        await query.message.edit_text("📂 **ניהול קבוצות פעילות:**\nלחץ על קבוצה כדי להפעיל או לבטל את הצגת התוצאות ממנה:", reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data.startswith("toggle_grp_") and user_id in ADMINS:
+        chat_id = int(data.split("toggle_grp_")[1])
+        new_status = await toggle_group_status(chat_id)
+        status_str = "מופעלת ✅" if new_status else "מועברת למצב מבוטל ❌"
+        await query.answer(f"סטטוס קבוצה עודכן: {status_str}")
+        
+        # רענון רשימת הקבוצות בלייב
+        groups = await get_all_groups()
+        keyboard = []
+        for g in groups:
+            status_icon = "✅" if g.get("enabled", True) else "❌"
+            btn_text = f"{status_icon} {g.get('title', 'קבוצה')}"
+            keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"toggle_grp_{g['chat_id']}")])
+        keyboard.append([InlineKeyboardButton("🔙 חזרה לפאנל מנהל", callback_data="admin_panel")])
+        await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data == "admin_change_photo" and user_id in ADMINS:
+        await query.message.edit_text("🖼️ **שינוי תמונת ברוכים הבאים:**\nשלח כעת תמונה בצ'אט הזה והיא תוגדר אוטומטית כתמונת הפתיחה של הבוט!")
 
     elif data.startswith("approve_user_") and user_id in ADMINS:
         target_id = int(data.split("approve_user_")[1])
@@ -141,7 +187,3 @@ async def callback_handler(client, query: CallbackQuery):
 
     elif data == "home":
         await send_home_message(client, query.message, user=query.from_user, is_edit=True)
-
-    elif data == "help":
-        btns = [[InlineKeyboardButton('🏠 בית 🏠', callback_data='home')]]
-        await query.message.edit_media(InputMediaPhoto(PHOTO_URL, caption="<b>מדריך עזרה לבוט חיפוש סרטים.</b>"), reply_markup=InlineKeyboardMarkup(btns))
