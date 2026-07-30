@@ -14,58 +14,65 @@ if SESSION_STRING:
         session_string=SESSION_STRING,
         in_memory=True
     )
+else:
+    print("❌ Critical: SESSION_STRING is missing in Environment Variables!")
 
 async def start_userbot_service():
     if not user_app:
-        print("❌ Userbot missing SESSION_STRING")
+        print("❌ Userbot client is not initialized.")
         return False
     if not user_app.is_connected:
         try:
+            print("🔄 Connecting Userbot to Telegram...")
             await user_app.start()
-            print("✅ Userbot connected for background indexing!")
+            print("✅ Userbot connected successfully!")
             return True
         except Exception as e:
-            print(f"❌ Userbot connection error: {e}")
+            print(f"❌ Userbot failed to connect: {e}")
             return False
     return True
 
 async def index_groups_background():
-    """סריקה מקיפה ובטוחה של הקבוצות והערוצים בחשבון"""
-    if not await start_userbot_service():
+    """סריקה מלאה של קבוצות וערוצים ברקע עם לוגים מפורטים"""
+    print("🚀 Initiating background indexing task...")
+    
+    connected = await start_userbot_service()
+    if not connected:
+        print("❌ Indexing aborted: Userbot is not connected.")
         return
 
-    print("🔄 Starting full group indexing to MongoDB...")
+    print("🔄 Fetching user dialogs/groups...")
     total_saved = 0
-    
+
     try:
         async for dialog in user_app.get_dialogs():
             chat = dialog.chat
-            # תמיכה בקבוצות, סופר-קבוצות וערוצים
-            if str(chat.type) in ["ChatType.GROUP", "ChatType.SUPERGROUP", "ChatType.CHANNEL", "group", "supergroup", "channel"]:
-                print(f"📂 Indexing group/channel: {chat.title} ({chat.id})")
+            chat_type_str = str(chat.type)
+            
+            # בדיקת סוג הצ'אט (קבוצות, סופר-קבוצות וערוצים)
+            if any(t in chat_type_str for t in ["GROUP", "SUPERGROUP", "CHANNEL", "group", "supergroup", "channel"]):
+                print(f"📂 Processing Chat: '{chat.title}' (ID: {chat.id})")
                 try:
-                    # סריקת 50 ההודעות האחרונות מכל קבוצה
                     async for msg in user_app.get_chat_history(chat.id, limit=50):
-                        content_text = msg.text or msg.caption
+                        text_content = msg.text or msg.caption
                         
-                        # אם יש שם של קובץ/מדיה ללא טקסט - נחלץ את שם הקובץ
-                        if not content_text:
+                        if not text_content:
                             if msg.document:
-                                content_text = msg.document.file_name
+                                text_content = msg.document.file_name
                             elif msg.video:
-                                content_text = msg.video.file_name
-                        
-                        if content_text:
-                            # במידה ואין קישור ישיר, נבנה קישור ערוץ/קבוצה
-                            link = msg.link or f"https://t.me/c/{str(chat.id).replace('-100', '')}/{msg.id}"
-                            await save_file(content_text, chat.id, msg.id, link)
+                                text_content = msg.video.file_name
+
+                        if text_content:
+                            clean_link = msg.link or f"https://t.me/c/{str(chat.id).replace('-100', '')}/{msg.id}"
+                            await save_file(text_content, chat.id, msg.id, clean_link)
                             total_saved += 1
                             
-                    await asyncio.sleep(1) # השהיה בטוחה בין קבוצות
+                    print(f"✅ Finished chat '{chat.title}'. Total saved so far: {total_saved}")
+                    await asyncio.sleep(1)
                 except Exception as group_err:
-                    print(f"⚠️ Could not index {chat.title}: {group_err}")
+                    print(f"⚠️ Error reading history for '{chat.title}': {group_err}")
                     continue
-                    
-        print(f"✅ Background indexing finished! Total files saved to DB: {total_saved}")
+
+        print(f"🎉 All groups indexed successfully! Total entries saved in MongoDB: {total_saved}")
     except Exception as e:
-        print(f"❌ Indexing loop error: {e}")
+        print(f"❌ Fatal error during indexing loop: {e}")
