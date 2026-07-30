@@ -2,25 +2,24 @@ import asyncio
 from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto
 from config import UPDATE_CHANNEL, REQUEST_GROUP, PHOTO_URL, ADMINS
-from userbot_service import get_all_user_chats, GROUP_SETTINGS
-from .search import APPROVED_USERS, REQUIRE_APPROVAL
+from Tj_Bots.search import APPROVED_USERS, REQUIRE_APPROVAL
 
 @Client.on_message(filters.command("start"))
 async def start_command(client, message):
     if message.chat.type == enums.ChatType.PRIVATE:
         user = message.from_user
         
-        # אם המשתמש הוא מנהל, נביא אותו ישר לתפריט
+        # מנהל נכנס ישר ללא דרישת אישור
         if user.id in ADMINS:
             APPROVED_USERS.add(user.id)
             return await send_home_message(client, message)
 
-        # אם מנגנון האישורים פעיל והמשתמש לא מאושר
+        # בדיקה אם מנגנון האישורים פעיל
         import Tj_Bots.search as search_mod
         if search_mod.REQUIRE_APPROVAL and user.id not in APPROVED_USERS:
             await message.reply("⏳ **בקשת הגישה שלך נשלחה למנהל.**\nתקבל הודעה ברגע שהגישה תאושר!", quote=True)
             
-            # שליחת הודעת אישור למנהל
+            # שליחת הודעה למנהלים לאישור
             admin_btn = InlineKeyboardMarkup([
                 [InlineKeyboardButton("✅ אישור משתמש", callback_data=f"approve_user_{user.id}"),
                  InlineKeyboardButton("❌ דחייה", callback_data=f"deny_user_{user.id}")]
@@ -82,7 +81,6 @@ async def show_admin_panel(message, is_edit=False):
     toggle_btn_txt = "🔓 בטל חסימת משתמשים" if search_mod.REQUIRE_APPROVAL else "🔒 הפעל חסימת משתמשים"
     
     buttons = [
-        [InlineKeyboardButton("👥 ניהול קבוצות חיפוש", callback_data="manage_groups")],
         [InlineKeyboardButton(toggle_btn_txt, callback_data="toggle_approval")],
         [InlineKeyboardButton("🧹 מחק את כל ההתכתבות", callback_data="clear_chat_action")],
         [InlineKeyboardButton("🏠 חזרה לבית", callback_data="home")]
@@ -91,22 +89,6 @@ async def show_admin_panel(message, is_edit=False):
         await message.edit_text(txt, reply_markup=InlineKeyboardMarkup(buttons))
     else:
         await message.reply_text(txt, reply_markup=InlineKeyboardMarkup(buttons), quote=True)
-
-async def show_groups_manager(message):
-    chats = await get_all_user_chats()
-    if not chats:
-        return await message.edit_text("❌ לא נמצאו קבוצות פעילות בחשבון ה-Userbot.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("חזרה ⋟", callback_data="admin_panel")]]))
-
-    buttons = []
-    for chat in chats:
-        is_active = GROUP_SETTINGS.get(chat.id, True)
-        status_icon = "✅" if is_active else "❌"
-        buttons.append([InlineKeyboardButton(f"{status_icon} {chat.title}", callback_data=f"toggle_grp_{chat.id}")])
-
-    buttons.append([InlineKeyboardButton("🏠 חזרה לפאנל", callback_data="admin_panel")])
-    
-    txt = "<b>👥 ניהול קבוצות לחיפוש סרטים:</b>\nלחץ על קבוצה כדי להפעיל (✅) או לבטל (❌) את החיפוש בה."
-    await message.edit_text(txt, reply_markup=InlineKeyboardMarkup(buttons))
 
 @Client.on_callback_query()
 async def callback_handler(client, query: CallbackQuery):
@@ -148,17 +130,6 @@ async def callback_handler(client, query: CallbackQuery):
         status_txt = "הופעלה" if search_mod.REQUIRE_APPROVAL else "בוטלה"
         await query.answer(f"חסימת משתמשים {status_txt}!", show_alert=True)
         await show_admin_panel(query.message, is_edit=True)
-
-    elif data == "manage_groups" and user_id in ADMINS:
-        await query.answer("טוען קבוצות...")
-        await show_groups_manager(query.message)
-
-    elif data.startswith("toggle_grp_") and user_id in ADMINS:
-        group_id = int(data.split("toggle_grp_")[1])
-        current_val = GROUP_SETTINGS.get(group_id, True)
-        GROUP_SETTINGS[group_id] = not current_val
-        await query.answer("סטטוס הקבוצה שונה!", show_alert=False)
-        await show_groups_manager(query.message)
 
     elif data == "clear_chat_action":
         await query.answer("מנקה את ההתכתבות...")
