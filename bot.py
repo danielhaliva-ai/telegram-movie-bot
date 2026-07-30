@@ -1,53 +1,33 @@
 import asyncio
-try:
-    asyncio.get_event_loop()
-except RuntimeError:
-    asyncio.set_event_loop(asyncio.new_event_loop())
-import logging
-import asyncio
-import os
-from pyrogram import Client, idle
-from config import API_ID, API_HASH, BOT_TOKEN, LOG_CHANNEL
+import sys
+from pyrogram import Client
+from config import API_ID, API_HASH, BOT_TOKEN
+from userbot_service import start_userbot_service, index_groups_background
 
-logging.basicConfig(
-    level=logging.ERROR,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# הכרחת הדפסה מיידית ללוגים של Railway
+sys.stdout.reconfigure(line_buffering=True)
+
+print("🚀 Starting Bot Service via bot.py...", flush=True)
 
 app = Client(
-    "TjBot_Session",
+    "movie_search_bot",
     api_id=API_ID,
     api_hash=API_HASH,
     bot_token=BOT_TOKEN,
-    plugins=dict(root="Tj_Bots") 
+    plugins=dict(root="Tj_Bots")
 )
 
 async def start_bot():
-    print("🤖 הבוט מתחיל לעבוד...")
+    print("🤖 Starting Main Bot Client...", flush=True)
     await app.start()
+    print("✅ Main Bot is Online and Listening!", flush=True)
     
-    if os.path.exists("restart.txt"):
-        try:
-            with open("restart.txt", "r") as f:
-                content = f.read().split()
-                if len(content) == 2:
-                    chat_id, msg_id = int(content[0]), int(content[1])
-                    await app.edit_message_text(chat_id, msg_id, "הבוט הופעל מחדש ✅")
-            os.remove("restart.txt")
-        except Exception as e:
-            print(f"Error editing restart message: {e}")
-            
-    try:
-        me = await app.get_me()
-        await app.send_message(
-            LOG_CHANNEL,
-            f"#BotStarted\n✅ **הבוט הופעל בהצלחה!**\n@{me.username}"
-        )
-    except: pass
-
-    print("✅ הבוט מחובר! שלח הודעה כדי לבדוק.")
-    await idle()
-    await app.stop()
+    print("🚀 Triggering Background Userbot Indexer...", flush=True)
+    asyncio.create_task(index_groups_background())
+    
+    print("🌐 Service fully initialized.", flush=True)
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    app.run(start_bot())
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(start_bot())
