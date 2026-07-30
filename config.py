@@ -13,6 +13,7 @@ SESSION_STRING = os.environ.get("SESSION_STRING", "")
 
 # מנהלים
 ADMINS = [8526860681]
+ADMIN_ID = ADMINS[0] if isinstance(ADMINS, list) and ADMINS else ADMINS
 
 LOG_CHANNEL = int(os.environ.get("LOG_CHANNEL", "0"))
 UPDATE_CHANNEL = "searchgram_bots"
