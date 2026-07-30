@@ -3,14 +3,39 @@ from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto
 from config import UPDATE_CHANNEL, REQUEST_GROUP, PHOTO_URL, ADMINS
 from userbot_service import get_all_user_chats, GROUP_SETTINGS
-
-ADMIN_CODE = "1234"
-CODE_REQUIRED = True
-AUTHENTICATED_USERS = set()
+from .search import APPROVED_USERS, REQUIRE_APPROVAL
 
 @Client.on_message(filters.command("start"))
 async def start_command(client, message):
     if message.chat.type == enums.ChatType.PRIVATE:
+        user = message.from_user
+        
+        # אם המשתמש הוא מנהל, נביא אותו ישר לתפריט
+        if user.id in ADMINS:
+            APPROVED_USERS.add(user.id)
+            return await send_home_message(client, message)
+
+        # אם מנגנון האישורים פעיל והמשתמש לא מאושר
+        import Tj_Bots.search as search_mod
+        if search_mod.REQUIRE_APPROVAL and user.id not in APPROVED_USERS:
+            await message.reply("⏳ **בקשת הגישה שלך נשלחה למנהל.**\nתקבל הודעה ברגע שהגישה תאושר!", quote=True)
+            
+            # שליחת הודעת אישור למנהל
+            admin_btn = InlineKeyboardMarkup([
+                [InlineKeyboardButton("✅ אישור משתמש", callback_data=f"approve_user_{user.id}"),
+                 InlineKeyboardButton("❌ דחייה", callback_data=f"deny_user_{user.id}")]
+            ])
+            for admin_id in ADMINS:
+                try:
+                    await client.send_message(
+                        admin_id,
+                        f"🔔 **בקשת גישה חדשה לבוט!**\n\n• **משתמש:** {user.mention}\n• **ID:** `{user.id}`",
+                        reply_markup=admin_btn
+                    )
+                except Exception:
+                    pass
+            return
+
         await send_home_message(client, message)
 
 async def send_home_message(client, message, user=None, is_edit=False):
@@ -38,38 +63,27 @@ async def send_home_message(client, message, user=None, is_edit=False):
            "**אני מנוע חיפוש סרטים וסדרות חדשני,**\n"
            "<b>התפקיד שלי זה לחפש סרטים בקבוצות,\n"
            "הוסיפו אותי לקבוצה שלכם ואני אמשיך מכאן.</b> ☄️\n\n"
-           f"<blockquote>**👨🏼‍💻 מתכנת ראשי: @DANIEL_HAHAH**</blockquote>")
+           f"<blockquote>**👨🏼‍💻 מתכנת ראשי: @danielhaliva**</blockquote>")
     
     if is_edit:
         await message.edit_media(InputMediaPhoto(PHOTO_URL, caption=txt), reply_markup=InlineKeyboardMarkup(buttons))
     else:
         await message.reply_photo(PHOTO_URL, caption=txt, reply_markup=InlineKeyboardMarkup(buttons), quote=True)
 
-@Client.on_message(filters.command("auth") & filters.private)
-async def auth_command(client, message):
-    global AUTHENTICATED_USERS
-    if len(message.command) > 1:
-        code_input = message.command[1].strip()
-        if code_input == ADMIN_CODE:
-            AUTHENTICATED_USERS.add(message.from_user.id)
-            await message.reply("✅ הקוד נכון! הוענקה לך גישה מלאה לפאנל המנהל.", quote=True)
-        else:
-            await message.reply("❌ קוד גישה שגוי!", quote=True)
-    else:
-        await message.reply("🔑 נא לשלוח את הקוד בצורה: `/auth 1234`", quote=True)
-
 async def show_admin_panel(message, is_edit=False):
-    code_status = "🔒 פעיל" if CODE_REQUIRED else "🔓 מבוטל"
+    import Tj_Bots.search as search_mod
+    approval_status = "🔒 פעיל (נדרש אישור)" if search_mod.REQUIRE_APPROVAL else "🔓 מבוטל (חופשי לכולם)"
+    
     txt = (f"<b>👑 פאנל ניהול ראשי</b>\n\n"
-           f"• **סטטוס קוד גישה:** {code_status}\n"
-           f"• **קוד נוכחי:** `{ADMIN_CODE}`\n\n"
+           f"• **מנגנון אישור משתמשים:** {approval_status}\n"
+           f"• **משתמשים מאושרים:** {len(APPROVED_USERS)}\n\n"
            "בחר פעולה מהכפתורים למטה:")
     
-    toggle_btn_txt = "🔓 בטל דרישת קוד" if CODE_REQUIRED else "🔒 הפעל דרישת קוד"
+    toggle_btn_txt = "🔓 בטל חסימת משתמשים" if search_mod.REQUIRE_APPROVAL else "🔒 הפעל חסימת משתמשים"
     
     buttons = [
         [InlineKeyboardButton("👥 ניהול קבוצות חיפוש", callback_data="manage_groups")],
-        [InlineKeyboardButton(toggle_btn_txt, callback_data="toggle_code")],
+        [InlineKeyboardButton(toggle_btn_txt, callback_data="toggle_approval")],
         [InlineKeyboardButton("🧹 מחק את כל ההתכתבות", callback_data="clear_chat_action")],
         [InlineKeyboardButton("🏠 חזרה לבית", callback_data="home")]
     ]
@@ -96,7 +110,7 @@ async def show_groups_manager(message):
 
 @Client.on_callback_query()
 async def callback_handler(client, query: CallbackQuery):
-    global CODE_REQUIRED
+    import Tj_Bots.search as search_mod
     data = query.data
     user_id = query.from_user.id
 
@@ -112,14 +126,27 @@ async def callback_handler(client, query: CallbackQuery):
         await query.answer()
         return await query.message.reply_text("🎲 **המלצה אקראית עבורך:** Inception (2010)", quote=True)
 
-    elif data == "admin_panel":
-        if user_id not in ADMINS:
-            return await query.answer("❌ אין לך הרשאות מנהל!", show_alert=True)
-            
-        if CODE_REQUIRED and user_id not in AUTHENTICATED_USERS:
-            await query.answer("🔒 נדרש קוד גישה!", show_alert=True)
-            return await query.message.reply_text("🔒 **הגישה לפאנל מנהל מוגנת בקוד!**\nשלח בצ'אט את הפקודה:\n`/auth 1234`", quote=True)
-            
+    elif data == "admin_panel" and user_id in ADMINS:
+        await show_admin_panel(query.message, is_edit=True)
+
+    elif data.startswith("approve_user_") and user_id in ADMINS:
+        target_id = int(data.split("approve_user_")[1])
+        APPROVED_USERS.add(target_id)
+        await query.answer("✅ המשתמש אושר בהצלחה!", show_alert=True)
+        await query.message.edit_text(f"{query.message.text}\n\n✅ **אושר על ידי המנהל!**")
+        try:
+            await client.send_message(target_id, "🎉 **גישתך לבוט אושרה!** כעת תוכל לשלוח שמות של סרטים לחיפוש.")
+        except Exception:
+            pass
+
+    elif data.startswith("deny_user_") and user_id in ADMINS:
+        await query.answer("❌ הבקשה נדחתה.", show_alert=True)
+        await query.message.edit_text(f"{query.message.text}\n\n❌ **נדחה על ידי המנהל.**")
+
+    elif data == "toggle_approval" and user_id in ADMINS:
+        search_mod.REQUIRE_APPROVAL = not search_mod.REQUIRE_APPROVAL
+        status_txt = "הופעלה" if search_mod.REQUIRE_APPROVAL else "בוטלה"
+        await query.answer(f"חסימת משתמשים {status_txt}!", show_alert=True)
         await show_admin_panel(query.message, is_edit=True)
 
     elif data == "manage_groups" and user_id in ADMINS:
@@ -130,14 +157,8 @@ async def callback_handler(client, query: CallbackQuery):
         group_id = int(data.split("toggle_grp_")[1])
         current_val = GROUP_SETTINGS.get(group_id, True)
         GROUP_SETTINGS[group_id] = not current_val
-        await query.answer(f"סטטוס הקבוצה שונה!", show_alert=False)
+        await query.answer("סטטוס הקבוצה שונה!", show_alert=False)
         await show_groups_manager(query.message)
-
-    elif data == "toggle_code" and user_id in ADMINS:
-        CODE_REQUIRED = not CODE_REQUIRED
-        status_txt = "בוטלה" if not CODE_REQUIRED else "הופעלה"
-        await query.answer(f"דרישת קוד הגישה {status_txt}!", show_alert=True)
-        await show_admin_panel(query.message, is_edit=True)
 
     elif data == "clear_chat_action":
         await query.answer("מנקה את ההתכתבות...")
