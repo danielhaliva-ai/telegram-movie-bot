@@ -17,6 +17,7 @@ if SESSION_STRING:
 
 async def start_userbot_service():
     if not user_app:
+        print("❌ Userbot missing SESSION_STRING")
         return False
     if not user_app.is_connected:
         try:
@@ -29,25 +30,42 @@ async def start_userbot_service():
     return True
 
 async def index_groups_background():
-    """סריקה בטוחה של הודעות אחרונות בקבוצות ושמירה ב-DB"""
+    """סריקה מקיפה ובטוחה של הקבוצות והערוצים בחשבון"""
     if not await start_userbot_service():
         return
 
-    print("🔄 Starting background indexing...")
+    print("🔄 Starting full group indexing to MongoDB...")
+    total_saved = 0
+    
     try:
         async for dialog in user_app.get_dialogs():
             chat = dialog.chat
-            if chat.type in [ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL]:
+            # תמיכה בקבוצות, סופר-קבוצות וערוצים
+            if str(chat.type) in ["ChatType.GROUP", "ChatType.SUPERGROUP", "ChatType.CHANNEL", "group", "supergroup", "channel"]:
+                print(f"📂 Indexing group/channel: {chat.title} ({chat.id})")
                 try:
-                    # סריקת 20 ההודעות האחרונות מכל קבוצה ברוגע
-                    async for msg in user_app.get_chat_history(chat.id, limit=20):
-                        if msg.text or msg.caption:
-                            text = msg.text or msg.caption
-                            link = msg.link or f"https://t.me/c/{str(chat.id)[4:]}/{msg.id}"
-                            await save_file(text, chat.id, msg.id, link)
-                    await asyncio.sleep(1)  # השהיה של שנייה בין קבוצה לקבוצה לבטיחות מלאה
-                except Exception:
+                    # סריקת 50 ההודעות האחרונות מכל קבוצה
+                    async for msg in user_app.get_chat_history(chat.id, limit=50):
+                        content_text = msg.text or msg.caption
+                        
+                        # אם יש שם של קובץ/מדיה ללא טקסט - נחלץ את שם הקובץ
+                        if not content_text:
+                            if msg.document:
+                                content_text = msg.document.file_name
+                            elif msg.video:
+                                content_text = msg.video.file_name
+                        
+                        if content_text:
+                            # במידה ואין קישור ישיר, נבנה קישור ערוץ/קבוצה
+                            link = msg.link or f"https://t.me/c/{str(chat.id).replace('-100', '')}/{msg.id}"
+                            await save_file(content_text, chat.id, msg.id, link)
+                            total_saved += 1
+                            
+                    await asyncio.sleep(1) # השהיה בטוחה בין קבוצות
+                except Exception as group_err:
+                    print(f"⚠️ Could not index {chat.title}: {group_err}")
                     continue
-        print("✅ Background indexing finished successfully!")
+                    
+        print(f"✅ Background indexing finished! Total files saved to DB: {total_saved}")
     except Exception as e:
-        print(f"❌ Indexing error: {e}")
+        print(f"❌ Indexing loop error: {e}")
