@@ -6,13 +6,24 @@ from Tj_Bots.search import APPROVED_USERS, REQUIRE_APPROVAL
 from database import get_start_photo, set_start_photo, get_all_groups, toggle_group_status
 from userbot_service import index_groups_background
 
+# ------------------------------------------------------------------
+# פונקציית עזר לבדיקת מנהל בצורה בטוחה
+# ------------------------------------------------------------------
+def check_is_admin(user_id):
+    if isinstance(ADMINS, list):
+        return any(str(user_id) == str(admin) for admin in ADMINS)
+    return str(user_id) == str(ADMINS)
+
+# ------------------------------------------------------------------
+# פקודת START
+# ------------------------------------------------------------------
 @Client.on_message(filters.command("start"))
 async def start_command(client, message):
     if message.chat.type == enums.ChatType.PRIVATE:
         user = message.from_user
         
         # מנהל נכנס ישר ללא דרישת אישור
-        if user.id in ADMINS:
+        if check_is_admin(user.id):
             APPROVED_USERS.add(user.id)
             return await send_home_message(client, message)
 
@@ -26,7 +37,8 @@ async def start_command(client, message):
                 [InlineKeyboardButton("✅ אישור משתמש", callback_data=f"approve_user_{user.id}"),
                  InlineKeyboardButton("❌ דחייה", callback_data=f"deny_user_{user.id}")]
             ])
-            for admin_id in ADMINS:
+            admin_list = ADMINS if isinstance(ADMINS, list) else [ADMINS]
+            for admin_id in admin_list:
                 try:
                     await client.send_message(
                         admin_id,
@@ -39,6 +51,9 @@ async def start_command(client, message):
 
         await send_home_message(client, message)
 
+# ------------------------------------------------------------------
+# הודעת הבית הראשי
+# ------------------------------------------------------------------
 async def send_home_message(client, message, user=None, is_edit=False):
     if not user:
         user = message.from_user
@@ -48,17 +63,18 @@ async def send_home_message(client, message, user=None, is_edit=False):
     bot_username = client.me.username
     bot_mention = f"[{bot_name}](https://t.me/{bot_username})"
     
-    # שליפת התמונה המעודכנת מ-MongoDB, ואם אין - שימוש בתמונת ברירת המחדל
+    # שליפת תמונת הברוכים הבאים מ-MongoDB
     current_photo = await get_start_photo() or PHOTO_URL
     
-    # כפתורים מנוקים: רק חיפוש, קבוצות, וערוצים
+    # כפתורי תפריט הבית
     buttons = [
         [InlineKeyboardButton("🔍 חיפוש סרט", callback_data="btn_search")],
         [InlineKeyboardButton('✇ קבוצת בקשות ✇', url=REQUEST_GROUP), InlineKeyboardButton('✇ ערוץ עדכונים ✇', url=f'https://t.me/{UPDATE_CHANNEL}')],
         [InlineKeyboardButton('⇋ להוספה לקבוצה ⇋', url=f"http://t.me/{client.me.username}?startgroup&admin=delete_messages")]
     ]
     
-    if user.id in ADMINS:
+    # הוספת כפתורי מנהל במידה והמשתמש הוא מנהל
+    if check_is_admin(user.id):
         buttons.append([InlineKeyboardButton("⚙️ פאנל מנהל", callback_data="admin_panel")])
         buttons.append([InlineKeyboardButton("🧹 מחיקת כל ההתכתבות", callback_data="clear_chat_action")])
 
@@ -74,6 +90,9 @@ async def send_home_message(client, message, user=None, is_edit=False):
     else:
         await message.reply_photo(current_photo, caption=txt, reply_markup=InlineKeyboardMarkup(buttons), quote=True)
 
+# ------------------------------------------------------------------
+# תצוגת פאנל ניהול מנהל
+# ------------------------------------------------------------------
 async def show_admin_panel(message, is_edit=False):
     import Tj_Bots.search as search_mod
     approval_status = "🔒 פעיל (נדרש אישור)" if search_mod.REQUIRE_APPROVAL else "🔓 מבוטל (חופשי לכולם)"
@@ -98,33 +117,45 @@ async def show_admin_panel(message, is_edit=False):
     else:
         await message.reply_text(txt, reply_markup=InlineKeyboardMarkup(buttons), quote=True)
 
-# קבלת תמונה חדשה מהמנהל לעדכון תמונת ההתחלה
+# ------------------------------------------------------------------
+# קבלת תמונה חדשה מהמנהל להחלפת תמונת הברכה
+# ------------------------------------------------------------------
 @Client.on_message(filters.photo & filters.private)
 async def set_photo_handler(client, message):
-    if message.from_user.id in ADMINS:
+    if check_is_admin(message.from_user.id):
         photo_id = message.photo.file_id
         await set_start_photo(photo_id)
         await message.reply_text("✅ **תמונת הברכה עודכנה בהצלחה!**\nכל משתמש שירשום `/start` יראה כעת את התמונה החדשה.", quote=True)
 
+# ------------------------------------------------------------------
+# מנוע הטיפול בלחיצות כפתורים (Callback Query)
+# ------------------------------------------------------------------
 @Client.on_callback_query()
 async def callback_handler(client, query: CallbackQuery):
     import Tj_Bots.search as search_mod
     data = query.data
     user_id = query.from_user.id
+    is_admin_user = check_is_admin(user_id)
 
+    # לחצן חיפוש
     if data == "btn_search":
         await query.answer()
         return await query.message.reply_text("פשוט רשום לי את שם הסרט או הסדרה שאתה מחפש! 🔎", quote=True)
 
-    elif data == "admin_panel" and user_id in ADMINS:
+    # פתיחת פאנל מנהל
+    elif data == "admin_panel" and is_admin_user:
+        await query.answer()
         await show_admin_panel(query.message, is_edit=True)
 
-    elif data == "admin_rescan" and user_id in ADMINS:
+    # הפעלת סריקת קבוצות ברקע
+    elif data == "admin_rescan" and is_admin_user:
         await query.answer("🔄 מתחיל סריקה ברקע...")
         await query.message.edit_text("🔄 **סריקת הקבוצות והערוצים החלה ברקע...**\nתוכל להמשיך להשתמש בבוט כרגיל.")
         asyncio.create_task(index_groups_background())
 
-    elif data == "admin_groups" and user_id in ADMINS:
+    # הצגת רשימת הקבוצות לניהול
+    elif data == "admin_groups" and is_admin_user:
+        await query.answer()
         groups = await get_all_groups()
         if not groups:
             return await query.message.edit_text("❌ לא נמצאו קבוצות במסד הנתונים. הרץ סריקה ראשונית.")
@@ -138,13 +169,13 @@ async def callback_handler(client, query: CallbackQuery):
         keyboard.append([InlineKeyboardButton("🔙 חזרה לפאנל מנהל", callback_data="admin_panel")])
         await query.message.edit_text("📂 **ניהול קבוצות פעילות:**\nלחץ על קבוצה כדי להפעיל או לבטל את הצגת התוצאות ממנה:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-    elif data.startswith("toggle_grp_") and user_id in ADMINS:
+    # שינוי מצב קבוצה (פעילה / כבויה)
+    elif data.startswith("toggle_grp_") and is_admin_user:
         chat_id = int(data.split("toggle_grp_")[1])
         new_status = await toggle_group_status(chat_id)
         status_str = "מופעלת ✅" if new_status else "מועברת למצב מבוטל ❌"
         await query.answer(f"סטטוס קבוצה עודכן: {status_str}")
         
-        # רענון רשימת הקבוצות בלייב
         groups = await get_all_groups()
         keyboard = []
         for g in groups:
@@ -154,10 +185,13 @@ async def callback_handler(client, query: CallbackQuery):
         keyboard.append([InlineKeyboardButton("🔙 חזרה לפאנל מנהל", callback_data="admin_panel")])
         await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
 
-    elif data == "admin_change_photo" and user_id in ADMINS:
+    # הוראה להחלפת תמונת הברכה
+    elif data == "admin_change_photo" and is_admin_user:
+        await query.answer()
         await query.message.edit_text("🖼️ **שינוי תמונת ברוכים הבאים:**\nשלח כעת תמונה בצ'אט הזה והיא תוגדר אוטומטית כתמונת הפתיחה של הבוט!")
 
-    elif data.startswith("approve_user_") and user_id in ADMINS:
+    # אישור משתמש
+    elif data.startswith("approve_user_") and is_admin_user:
         target_id = int(data.split("approve_user_")[1])
         APPROVED_USERS.add(target_id)
         await query.answer("✅ המשתמש אושר בהצלחה!", show_alert=True)
@@ -167,16 +201,19 @@ async def callback_handler(client, query: CallbackQuery):
         except Exception:
             pass
 
-    elif data.startswith("deny_user_") and user_id in ADMINS:
+    # דחיית משתמש
+    elif data.startswith("deny_user_") and is_admin_user:
         await query.answer("❌ הבקשה נדחתה.", show_alert=True)
         await query.message.edit_text(f"{query.message.text}\n\n❌ **נדחה על ידי המנהל.**")
 
-    elif data == "toggle_approval" and user_id in ADMINS:
+    # שינוי הגדרת דרישת אישור משתמשים
+    elif data == "toggle_approval" and is_admin_user:
         search_mod.REQUIRE_APPROVAL = not search_mod.REQUIRE_APPROVAL
         status_txt = "הופעלה" if search_mod.REQUIRE_APPROVAL else "בוטלה"
         await query.answer(f"חסימת משתמשים {status_txt}!", show_alert=True)
         await show_admin_panel(query.message, is_edit=True)
 
+    # מחיקת התכתבות
     elif data == "clear_chat_action":
         await query.answer("מנקה את ההתכתבות...")
         try:
@@ -185,5 +222,7 @@ async def callback_handler(client, query: CallbackQuery):
         except Exception:
             pass
 
+    # חזרה לדף הבית
     elif data == "home":
+        await query.answer()
         await send_home_message(client, query.message, user=query.from_user, is_edit=True)
