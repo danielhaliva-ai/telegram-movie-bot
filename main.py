@@ -1,9 +1,8 @@
 import asyncio
 from pyrogram import Client
 from config import API_ID, API_HASH, BOT_TOKEN
-from userbot_service import start_userbot_service
+from userbot_service import start_userbot_service, index_groups_background
 
-# הגדרת הבוט הראשי
 bot = Client(
     "movie_search_bot",
     api_id=API_ID,
@@ -13,13 +12,16 @@ bot = Client(
 )
 
 async def main():
-    print("🚀 Starting Userbot service...")
+    print("🚀 Starting Userbot...")
     await start_userbot_service()
     
     print("🚀 Starting Main Bot...")
     await bot.start()
     
-    print("✅ Bot is online and running!")
+    # הפעלת האינדוקס ברקע באופן שאינו חוסם
+    asyncio.create_task(index_groups_background())
+    
+    print("✅ Bot is online and running safely!")
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
