@@ -109,7 +109,7 @@ async def set_photo_handler(client, message):
 
 @Client.on_callback_query()
 async def callback_handler(client, query: CallbackQuery):
-    # מענה מיידי לטלגרם למניעת טעינה אינסופית
+    # מענה מיידי ראשון לטלגרם - מבטל את ה"טוען..." מיד!
     try:
         await query.answer()
     except Exception:
