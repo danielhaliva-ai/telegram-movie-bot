@@ -99,13 +99,14 @@ async def show_admin_panel(message, is_edit=False):
     
     txt = (f"<b>👑 פאנל ניהול ראשי</b>\n\n"
            f"• **מנגנון אישור משתמשים:** {approval_status}\n"
-           f"• **משתמשים מאושרים:** {len(APPROVED_USERS)}\n\n"
+           f"• **סה\"כ משתמשים מאושרים:** `{len(APPROVED_USERS)}`\n\n"
            "בחר פעולה מהכפתורים למטה:")
     
     toggle_btn_txt = "🔓 בטל חסימת משתמשים" if search_mod.REQUIRE_APPROVAL else "🔒 הפעל חסימת משתמשים"
     
     buttons = [
         [InlineKeyboardButton(toggle_btn_txt, callback_data="toggle_approval")],
+        [InlineKeyboardButton("👥 ניהול וביטול משתמשים", callback_data="admin_users")],
         [InlineKeyboardButton("🔄 סריקת קבוצות מחדש", callback_data="admin_rescan")],
         [InlineKeyboardButton("📂 ניהול קבוצות פעילות", callback_data="admin_groups")],
         [InlineKeyboardButton("🖼️ עדכון תמונת ברוכים הבאים", callback_data="admin_change_photo")],
@@ -146,6 +147,37 @@ async def callback_handler(client, query: CallbackQuery):
     elif data == "admin_panel" and is_admin_user:
         await query.answer()
         await show_admin_panel(query.message, is_edit=True)
+
+    # ניהול וביטול משתמשים
+    elif data == "admin_users" and is_admin_user:
+        await query.answer()
+        if not APPROVED_USERS:
+            return await query.message.edit_text("❌ אין כרגע משתמשים מאושרים במערכת.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 חזרה לפאנל", callback_data="admin_panel")]]))
+        
+        keyboard = []
+        for uid in list(APPROVED_USERS):
+            keyboard.append([InlineKeyboardButton(f"🚫 בטל אישור ל- ID: {uid}", callback_data=f"revoke_user_{uid}")])
+        keyboard.append([InlineKeyboardButton("🔙 חזרה לפאנל מנהל", callback_data="admin_panel")])
+        
+        await query.message.edit_text(f"👥 **רשימת משתמשים מאושרים ({len(APPROVED_USERS)}):**\nלחץ על משתמש כדי לבטל לו את האישור והגישה לבוט:", reply_markup=InlineKeyboardMarkup(keyboard))
+
+    # ביטול אישור למשתמש ספציפי
+    elif data.startswith("revoke_user_") and is_admin_user:
+        target_uid = int(data.split("revoke_user_")[1])
+        if target_uid in APPROVED_USERS:
+            APPROVED_USERS.remove(target_uid)
+            await query.answer("❌ האישור בוטל והמשתמש נחסם!", show_alert=True)
+            try:
+                await client.send_message(target_uid, "🚫 **גישתך לבוט בוטלה על ידי המנהל.**")
+            except Exception:
+                pass
+        
+        # רענון הרשימה בלייב
+        keyboard = []
+        for uid in list(APPROVED_USERS):
+            keyboard.append([InlineKeyboardButton(f"🚫 בטל אישור ל- ID: {uid}", callback_data=f"revoke_user_{uid}")])
+        keyboard.append([InlineKeyboardButton("🔙 חזרה לפאנל מנהל", callback_data="admin_panel")])
+        await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
 
     # הפעלת סריקת קבוצות ברקע
     elif data == "admin_rescan" and is_admin_user:
