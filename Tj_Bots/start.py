@@ -109,21 +109,26 @@ async def set_photo_handler(client, message):
 
 @Client.on_callback_query()
 async def callback_handler(client, query: CallbackQuery):
-    # מענה מיידי ראשון לטלגרם - מבטל את ה"טוען..." מיד!
+    print(f"DEBUG: Callback received: {query.data} from {query.from_user.id}", flush=True)
+    
     try:
         await query.answer()
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"DEBUG: Answer error: {e}", flush=True)
 
     import Tj_Bots.search as search_mod
     data = query.data
     user_id = query.from_user.id
     is_admin_user = check_is_admin(user_id)
 
+    print(f"DEBUG: Is Admin Check: {is_admin_user}", flush=True)
+
     if data == "btn_search":
         return await query.message.reply_text("פשוט רשום לי את שם הסרט או הסדרה שאתה מחפש! 🔎", quote=True)
 
-    elif data == "admin_panel" and is_admin_user:
+    elif data == "admin_panel":
+        if not is_admin_user:
+            return await query.message.reply_text("❌ אין לך הרשאות מנהל!")
         await show_admin_panel(query.message, is_edit=True)
 
     elif data == "admin_users" and is_admin_user:
